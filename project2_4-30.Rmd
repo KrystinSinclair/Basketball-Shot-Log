@@ -1,0 +1,98 @@
+---
+title: "Project 2"
+author: "Sam Kupfer, Ye In Jeon"
+date: "April 21, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r loaddata}
+df <- data.frame(read.csv('~/Downloads/shot_logs.csv'))
+str(df)
+summary(df)
+```
+
+```{r preprocessing_funcs}
+seconds_from_gameclock = function(row) {
+    clocksplit <- strsplit(row[8], ":")
+    mins <- as.integer(clocksplit[[1]][1])
+    secs <- as.integer(clocksplit[[1]][2])
+    return(60 * mins + secs)
+}
+
+```
+
+```{r preprocessing}
+# Change game clock from "minutes:seconds" to an integer of seconds
+df$GAME_CLOCK <- apply(df, 1, seconds_from_gameclock)
+# Fix shot clock values that are 0 by using the game clock instead
+df$SHOT_CLOCK <- ifelse(is.na(df$SHOT_CLOCK), df$GAME_CLOCK, df$SHOT_CLOCK)
+# Remove any erroneous rows where the shot clock is still above 24
+df <- subset(df, SHOT_CLOCK <= 24.0)
+```
+
+```{r proj1}
+shot_an <- subset(df, select = c("FINAL_MARGIN", "DRIBBLES","SHOT_CLOCK", "TOUCH_TIME", "SHOT_DIST", "SHOT_NUMBER", "CLOSE_DEF_DIST", "PERIOD", "FGM", "GAME_CLOCK"))
+summary(shot_an)
+
+```
+
+```{r proj2}
+library(ggplot2)
+ggplot(df, aes(x=PTS, y=SHOT_DIST, fill=PTS, group=PTS)) + 
+    geom_boxplot(alpha=0.3) +
+    theme(legend.position="none")
+```
+
+```{r bargraphs}
+sd_hist <- hist(df$SHOT_DIST, plot=FALSE)
+shot_counts <- sd_hist$counts
+
+made_shots_df <- subset(df, FGM == 1)
+mades_hist <- hist(made_shots_df$SHOT_DIST, plot=FALSE)
+mades_counts <- mades_hist$counts
+
+breaks <- mades_hist$breaks
+distance_breaks <- head(breaks, length(breaks) - 1)
+percs <- mades_counts / shot_counts
+
+barplot(shot_counts, names.arg=distance_breaks, main="Shot Frequency by Distance", col="blue")
+barplot(percs, names.arg = distance_breaks, main = "Shot Percentage by Distance", col = "darkgreen")
+```
+
+
+```{r proj3}
+#install.packages("leaps")
+#install.packages("ISLR")
+library("leaps")
+library("ISLR")
+model <- subset(df, select = c("DRIBBLES","SHOT_CLOCK", "TOUCH_TIME", "SHOT_DIST", "SHOT_NUMBER", "CLOSE_DEF_DIST", "FGM", "PTS_TYPE", "GAME_CLOCK", "PERIOD"))
+reg.best <- regsubsets(FGM~., data = model, nvmax = 19)  
+plot(reg.best, scale = "Cp", main = "Cp")
+
+summary(reg.best)
+```        
+
+
+
+
+```{r proj4}
+model1 <- subset(model, select = c("DRIBBLES","SHOT_CLOCK", "TOUCH_TIME", "SHOT_DIST", "SHOT_NUMBER", "CLOSE_DEF_DIST", "FGM", "PTS_TYPE", "PERIOD"))
+
+logit <- glm(FGM ~ ., data=model1)
+summary(logit)
+exp(coef(logit))
+# install.packages("ResourceSelection")
+library("ResourceSelection")
+hoslem.test(model1$FGM, fitted(logit))
+library("pROC")
+prob=predict(logit, type=c("response"))
+model1$prob = prob
+h <- roc(FGM~prob, data=model1)
+h
+plot(h)
+```
